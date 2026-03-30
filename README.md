@@ -22,12 +22,19 @@ cp -r .claude/agents/ <your-project>/.claude/agents/
 cp -r .claude/rules/ <your-project>/.claude/rules/
 ```
 
-### 2. 前提ツールのインストール
+### 2. 前提ツール・サービスのセットアップ
 
 ```bash
 npm i -g @openai/codex    # Codex CLI
 brew install gh            # GitHub CLI
 ```
+
+#### Devin Review（推奨）
+
+Phase 6 の「レビュー監視」は、PRに対して外部レビューが届くことを前提としています。
+このスキルでは [Devin Review](https://devin.ai/) の利用を想定しており、PR作成後に Devin がレビューコメントを投稿するのを待ち、指摘があれば自動で修正・再プッシュします。
+
+Devin Review を使わない場合は、Phase 6 のレビュー監視をスキップするか、他のレビューbot に合わせてカスタマイズしてください。
 
 ### 3. プロジェクトに最適化
 
