@@ -1,4 +1,6 @@
-# /solve — Claude Code 完全自動開発サイクル
+# /iai — 居合
+
+> 抜いて、斬って、納める。一つの流れで課題を解決する。
 
 課題を一言伝えるだけで、Issue作成 → プラン策定 → マルチLLMレビュー → 実装 → テスト → PR → マージまでを自動実行する Claude Code スキル。
 
@@ -15,7 +17,7 @@
 
 ```bash
 # プロジェクトの .claude/ ディレクトリにコピー
-cp -r .claude/skills/solve/ <your-project>/.claude/skills/solve/
+cp -r .claude/skills/iai/ <your-project>/.claude/skills/iai/
 cp -r .claude/agents/ <your-project>/.claude/agents/
 cp -r .claude/rules/ <your-project>/.claude/rules/
 ```
@@ -41,10 +43,10 @@ brew install gh            # GitHub CLI
 
 ```bash
 # 通常モード（確認しながら）
-/solve ダッシュボードのグラフが表示されない
+/iai ダッシュボードのグラフが表示されない
 
 # 全自動モード（マージまで一気に）
-/solve --auto ログインボタンが反応しない
+/iai --auto ログインボタンが反応しない
 ```
 
 ## ファイル構成
@@ -52,7 +54,7 @@ brew install gh            # GitHub CLI
 ```
 .claude/
 ├── skills/
-│   └── solve/
+│   └── iai/
 │       └── skill.md          # メインスキル定義
 ├── agents/
 │   ├── codex-code-review.md  # Codex CLI レビューエージェント
@@ -64,13 +66,12 @@ brew install gh            # GitHub CLI
 ## ワークフロー
 
 ```
-Phase 1: 課題分析 → Issue作成 → ブランチ作成
-Phase 2: プラン策定 → Claude Opus レビューループ → Codex 最終ゲート
-Phase 3: 実装 → Claude Opus diff レビューループ → Codex 最終ゲート
-Phase 4: テスト実行 → (不足時: テスト作成サイクル)
-Phase 5: PR作成
-Phase 6: レビュー監視 → 対応 → マージ
-Phase 7: 完了報告
+抜刀（Phase 1）: 課題分析 → Issue作成 → ブランチ作成
+構え（Phase 2）: プラン策定 → マルチLLMレビュー
+斬撃（Phase 3）: 実装 → マルチLLMレビュー
+血振り（Phase 4）: テスト実行
+納刀（Phase 5）: PR作成
+残心（Phase 6）: レビュー監視 → 対応 → マージ
 ```
 
 ## 2段階レビューゲートの設計思想

@@ -183,4 +183,4 @@ gemini exec "以下のdiffをレビューしてください: {diff}"
 - [ ] （任意）`.claude/rules/coding-rules.md` を作成した
 - [ ] （任意）`.claude/rules/testing.md` を作成した
 
-すべて完了したら `/solve <課題の説明>` で実行できます。
+すべて完了したら `/iai <課題の説明>` で実行できます。
