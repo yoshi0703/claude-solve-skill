@@ -27,17 +27,15 @@ npm i -g @openai/codex    # Codex CLI
 brew install gh            # GitHub CLI
 ```
 
-### 3. カスタマイズ
+### 3. プロジェクトに最適化
 
-`.claude/rules/review.md` の `Project-Specific Check Items` セクションに、プロジェクト固有のレビュールールを追加:
+**[CUSTOMIZATION.md](CUSTOMIZATION.md)** に詳細なカスタマイズガイドがあります。最低限やるべきことは:
 
-```markdown
-## Project-Specific Check Items
+1. `.claude/rules/review.md` にプロジェクト固有のレビュールールを追加
+2. テスト・ビルドコマンドをプロジェクトに合わせて確認
+3. （任意）コーディングルール・テストルールを追加
 
-- React Hooks must only be called at the top level of components
-- All database queries must use `owner_id` (not `user_id`) for the stores table
-- No usage of font-weight 300 (font-light)
-```
+言語別の設定例（React, Python, Go, Swift）は [CUSTOMIZATION.md](CUSTOMIZATION.md) を参照。
 
 ### 4. 実行
 
