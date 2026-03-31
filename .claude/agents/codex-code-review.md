@@ -4,6 +4,7 @@ description: Codex CLI を実際に起動してコードレビューを実行す
 tools: Bash, Glob, Grep, Read
 model: haiku
 color: purple
+agent-skills: .claude/skills/iai/skill.md
 ---
 
 # Codex Code Review Agent

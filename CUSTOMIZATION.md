@@ -171,6 +171,59 @@ gemini exec "以下のdiffをレビューしてください: {diff}"
 
 ---
 
+## Step 4: パーミッション・Hooks の設定（推奨）
+
+`.claude/settings.json.example` をコピーしてプロジェクトに配置します。
+
+```bash
+cp .claude/settings.json.example .claude/settings.json
+```
+
+### パーミッション設定
+
+スキルが使用するコマンドを事前許可することで、実行時の確認ダイアログを減らせます:
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh *)",
+      "Bash(codex *)",
+      "Bash(git *)",
+      "Bash(npm run *)"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(git push --force *)"
+    ]
+  }
+}
+```
+
+### Hooks 設定
+
+特定のツール呼び出しの前後にカスタム処理を挟めます:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash(git push *)",
+        "hooks": [{ "type": "command", "command": "echo 'Pushing...'" }]
+      }
+    ]
+  }
+}
+```
+
+活用例:
+- `git push` 前に Slack 通知
+- PR 作成後にデプロイプレビュー起動
+- テスト失敗時にエラーログ収集
+
+---
+
 ## チェックリスト
 
 セットアップ完了の確認に使ってください:
@@ -179,6 +232,7 @@ gemini exec "以下のdiffをレビューしてください: {diff}"
 - [ ] Codex CLI がインストールされている（`codex --version`）
 - [ ] GitHub CLI がインストールされている（`gh --version`）
 - [ ] OPENAI_API_KEY が環境変数に設定されている
+- [ ] `.claude/settings.json` をプロジェクトに配置した（settings.json.example からコピー）
 - [ ] （任意）CLAUDE.md にビルド・テストコマンドが記載されている
 - [ ] （任意）`.claude/rules/coding-rules.md` を作成した
 - [ ] （任意）`.claude/rules/testing.md` を作成した

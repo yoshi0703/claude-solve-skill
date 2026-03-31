@@ -1,0 +1,51 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh *)",
+      "Bash(codex *)",
+      "Bash(git checkout *)",
+      "Bash(git pull *)",
+      "Bash(git push *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git blame *)",
+      "Bash(git branch *)",
+      "Bash(npm run *)",
+      "Bash(npx tsc *)",
+      "Bash(npx playwright *)",
+      "Read",
+      "Glob",
+      "Grep",
+      "Agent"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(git push --force *)",
+      "Bash(git reset --hard *)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash(git push *)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '🔍 Pushing to remote — make sure all reviews passed'"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash(gh pr create *)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '✅ PR created — starting review monitor'"
+          }
+        ]
+      }
+    ]
+  }
+}
