@@ -138,6 +138,7 @@ cp .claude/settings.json.example <your-project>/.claude/settings.json
 │   ├── iai-orchestrator.md     # Phase 0〜7 進行管理・品質ゲート
 │   ├── iai-investigator.md     # Phase 1 深層調査プロトコル
 │   ├── iai-planner.md          # Phase 2 プラン策定（6軸スコアカード内蔵）
+│   ├── iai-verifier.md         # Phase 4 敵対的検証（壊しにいく）
 │   ├── codex-code-review.md    # Codex CLI 最終ゲート（4値verdict）
 │   └── opus-code-review.md     # Claude Opus レビューループ（チーム内部用）
 ├── rules/
