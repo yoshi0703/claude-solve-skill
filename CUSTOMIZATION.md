@@ -224,6 +224,27 @@ cp .claude/settings.json.example .claude/settings.json
 
 ---
 
+## Step 5: 検証エージェントのカスタマイズ（任意）
+
+`iai-verifier` は `.claude/rules/review.md` の Project-Specific Check Items を自動で読み込んで検証します。
+つまり **Step 1 でレビュールールを追加すれば、検証も自動的に強化されます**。
+
+### 検証戦略のカスタマイズ
+
+検証エージェントは変更タイプ（Frontend / Backend / Database / Bug Fix / New Feature）に応じて異なる戦略を使います。プロジェクト固有の検証を追加したい場合は、`iai-verifier.md` の「変更タイプ別 検証戦略」セクションを編集してください。
+
+### 例: Python プロジェクトの検証追加
+
+```markdown
+### Backend（API / サーバー関数）
+1. 認証チェック: `@login_required` が全ビューに含まれているか
+2. N+1 チェック: `select_related()` / `prefetch_related()` の使用
+3. マイグレーション: `python manage.py makemigrations --check` で未適用がないか
+4. 型チェック: `mypy .` が通るか
+```
+
+---
+
 ## チェックリスト
 
 セットアップ完了の確認に使ってください:
@@ -236,5 +257,6 @@ cp .claude/settings.json.example .claude/settings.json
 - [ ] （任意）CLAUDE.md にビルド・テストコマンドが記載されている
 - [ ] （任意）`.claude/rules/coding-rules.md` を作成した
 - [ ] （任意）`.claude/rules/testing.md` を作成した
+- [ ] （任意）`.claude/agents/iai-verifier.md` の検証戦略をカスタマイズした
 
 すべて完了したら `/iai <課題の説明>` で実行できます。

@@ -2,14 +2,19 @@
 
 > 抜いて、斬って、納める。一つの流れで課題を解決する。
 
-課題を一言伝えるだけで、Issue作成 → プラン策定 → マルチLLMレビュー → 実装 → テスト → PR → マージまでを自動実行する Claude Code スキル。
+課題を一言伝えるだけで、Issue作成 → プラン策定 → テスト設計 → 実装 → 検証 → PR → マージまでを自動実行する Claude Code スキル。
 
 ## 特徴
 
-- **シニアエンジニアの調査メソドロジー**: 症状トリアージ → 仮説駆動調査 → Git履歴調査 → 根本原因特定の4段階深層調査
+- **テスト駆動開発**: テストを先に書き（Red）、AIにテストを通す実装を書かせる（Green）
+- **敵対的検証**: レビューとは別に、実際にコマンドを実行して「壊しにいく」検証エージェント
+- **シニアエンジニアの調査メソドロジー**: 症状トリアージ → 仮説駆動調査 → Git履歴調査 → 根本原因特定
 - **課題タイプ別調査プロトコル**: CRASH / WRONG_DATA / SLOW / INTERMITTENT / UI_BROKEN / INTEGRATION / NEW_FEATURE / REFACTOR の8タイプ
 - **マルチLLMレビュー**: Claude Opus（反復ループ） + Codex CLI（最終ゲート）の2段階品質チェック
-- **エージェント組織体制**: 調査・プラン・実装・レビュー・テスト・PR を専門サブエージェントに委譲
+- **ステップ別レビュー**: 各実装ステップで個別にレビュー。一括実装→一括レビューは禁止
+- **Worktree 隔離**: 並列実装時に `isolation: "worktree"` で同一ファイルへの同時書き込みを防止
+- **構造化メモリ**: バグパターン・地雷・有効手法を型分けして蓄積、プロジェクトが賢くなる
+- **エージェント組織体制**: 調査・プラン・テスト・実装・検証・レビュー・PR を専門サブエージェントに委譲
 - **コンテキスト保護**: Command → Agent → Skill パターンで必要な時に必要な定義だけをロード
 - **チェックポイント復旧**: 中断しても前回のPhaseから再開可能
 - **通常/全自動モード**: 確認しながら or `--auto` で一気通貫
@@ -69,13 +74,14 @@ cp .claude/settings.json.example <your-project>/.claude/settings.json
 graph TD
     U[ユーザー: /iai 課題の説明] --> CMD[commands/iai.md<br/>引数パース・前提チェック]
     CMD --> ORC[agents/iai-orchestrator.md<br/>Phase管理・品質ゲート]
-    
+
     ORC --> INV[agents/iai-investigator.md<br/>Phase 1: 深層調査]
-    ORC --> PLN[agents/iai-planner.md<br/>Phase 2: プラン策定]
-    ORC --> IMP[general-purpose agent<br/>Phase 3: 実装]
-    ORC --> TST[general-purpose agent<br/>Phase 4: テスト]
+    ORC --> PLN[agents/iai-planner.md<br/>Phase 2: プラン策定+テスト設計]
+    ORC --> TST[general-purpose agent<br/>Phase 3: テスト作成 Red]
+    ORC --> IMP[general-purpose agent<br/>Phase 4: 実装 Green]
+    ORC --> VRF[agents/iai-verifier.md<br/>Phase 4: 敵対的検証]
     ORC --> PR[general-purpose agent<br/>Phase 5-7: PR・マージ]
-    
+
     ORC --> OPR[agents/opus-code-review.md<br/>Opus レビューループ]
     ORC --> CDX[agents/codex-code-review.md<br/>Codex 最終ゲート]
     
@@ -86,6 +92,7 @@ graph TD
     style CMD fill:#e1f5fe
     style ORC fill:#fff3e0
     style SKL fill:#f3e5f5
+    style VRF fill:#fce4ec
 ```
 
 ### ファイル構成
@@ -100,7 +107,8 @@ graph TD
 ├── agents/
 │   ├── iai-orchestrator.md     # Phase 1〜7 進行管理
 │   ├── iai-investigator.md     # Phase 1 深層調査プロトコル
-│   ├── iai-planner.md          # Phase 2 プラン策定
+│   ├── iai-planner.md          # Phase 2 プラン策定（テスト設計含む）
+│   ├── iai-verifier.md         # Phase 4 敵対的検証（PASS/FAIL/PARTIAL）
 │   ├── codex-code-review.md    # Codex CLI レビュー（最終ゲート）
 │   └── opus-code-review.md     # Claude Opus レビュー（反復ループ）
 ├── rules/
@@ -112,7 +120,7 @@ graph TD
 
 | 旧構成 | 新構成 |
 |--------|--------|
-| skill.md 1ファイル（34KB）が毎回全ロード | skill.md（4KB）+ 必要なエージェントのみロード |
+| skill.md 1ファイル（34KB）が毎回全ロード | skill.md（5KB）+ 必要なエージェントのみロード |
 | コンテキストの3-5%を常時消費 | 必要時のみ0.5-2%消費 |
 
 ## ワークフロー
@@ -120,16 +128,40 @@ graph TD
 ```mermaid
 graph LR
     P1[Phase 1<br/>抜刀<br/>深層調査] --> P2[Phase 2<br/>構え<br/>プラン策定]
-    P2 --> P3[Phase 3<br/>斬撃<br/>実装]
-    P3 --> P4[Phase 4<br/>血振り<br/>テスト]
+    P2 --> P3[Phase 3<br/>血振り<br/>テスト Red]
+    P3 --> P4[Phase 4<br/>斬撃<br/>実装 Green<br/>+ 検証]
     P4 --> P5[Phase 5<br/>納刀<br/>PR作成]
     P5 --> P6[Phase 6<br/>残心<br/>レビュー対応]
     P6 --> P7[Phase 7<br/>完了]
     
     P2 -->|2段階ゲート| RV{Opus + Codex<br/>レビュー}
-    P3 -->|2段階ゲート| RV
     RV -->|合格| P3
-    RV -->|合格| P4
+    P4 -->|ステップ別| OPR{Opus<br/>レビュー}
+    OPR -->|全ステップ合格| CDX{Codex<br/>最終ゲート}
+    CDX -->|合格| VRF{Verifier<br/>敵対的検証}
+    VRF -->|PASS| P5
+```
+
+### TDD フロー（Phase 3 → Phase 4）
+
+```mermaid
+graph TD
+    A[Phase 3: テスト作成] --> B[テストレビュー]
+    B --> C[Red 確認<br/>テストが失敗すること]
+    C --> D[Phase 4: ステップ1 実装]
+    D --> E[Green 確認<br/>テストが通ること]
+    E --> F[Opus レビュー]
+    F -->|P0/P1あり| D
+    F -->|合格| G[ステップ2 実装...]
+    G --> H[全ステップ完了]
+    H --> I[Codex 最終ゲート]
+    I --> J[Verification<br/>壊しにいく]
+    J -->|PASS| K[Phase 5 へ]
+    J -->|FAIL| D
+
+    style C fill:#ffcdd2
+    style E fill:#c8e6c9
+    style J fill:#fce4ec
 ```
 
 ### Phase 1 深層調査の流れ
@@ -138,7 +170,7 @@ graph LR
 graph TD
     A[課題受付] --> B[1-1 症状トリアージ<br/>8タイプに自動分類]
     B --> C[1-2 仮説駆動調査<br/>タイプ別プロトコル]
-    B --> D[1-3 Git考古学<br/>変更履歴との相関]
+    B --> D[1-3 Git履歴調査<br/>変更履歴との相関]
     C --> E[1-4 根本原因の特定<br/>仮説統合・検証]
     D --> E
     E --> F[1-5 Issue・ブランチ作成]
@@ -151,15 +183,29 @@ graph TD
 
 > ※ 1-2 と 1-3 は並列実行
 
-### 2段階レビューゲート
+### 品質ゲート構成
 
 ```
 Claude Opus ループ（安い・反復向き）
     ↓ P0/P1 なしで合格
 Codex CLI 最終ゲート（高い・外部視点・1回のみ）
-    ↓ 合格 → 次の Phase へ
-    ↓ 不合格 → Claude Opus ループに戻る
+    ↓ 合格
+iai-verifier 敵対的検証（実行ベース・壊しにいく）
+    ↓ VERDICT: PASS → 次の Phase へ
+    ↓ VERDICT: FAIL → 修正ループに戻る
 ```
+
+## 設計思想
+
+### Claude Code 本体から学んだ設計原則
+
+このスキルは [Claude Code のソースコード](https://github.com/anthropics/claude-code) の設計思想を参考にしています:
+
+1. **検証専用エージェント**: レビュー（コードを読む）と検証（コマンドを実行して壊す）は別物。Claude Code 本体の `verificationAgent` と同じ思想
+2. **言い訳ブロック（Rationalization Defense）**: 「コードを見た限り正しい」「テストが通っている」等の自己欺瞞を体系的に却下
+3. **Worktree 隔離**: 並列エージェントの同時書き込みを防止。Claude Code 本体の `isolation: "worktree"` 機能を活用
+4. **構造化メモリ**: `bug_pattern` / `project_landmine` / `effective_technique` 等に型分けして蓄積
+5. **ステップ別レビュー**: 一括実装→一括レビューではなく、各ステップで個別にレビュー
 
 ## Devin Review（推奨）
 

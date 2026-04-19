@@ -39,11 +39,12 @@ agent-skills: .claude/skills/iai/skill.md
 | エージェント | タイプ | 用途 |
 |-------------|--------|------|
 | iai-investigator | general-purpose | Phase 1: 深層調査 |
-| iai-planner | general-purpose | Phase 2: プラン策定 |
-| 実装エージェント | general-purpose | Phase 3: コーディング |
+| iai-planner | general-purpose | Phase 2: プラン策定（テスト方針含む） |
+| テスト設計エージェント | general-purpose | Phase 3: テスト設計・作成（Red） |
+| 実装エージェント | general-purpose | Phase 4: コーディング（Green） |
+| iai-verifier | general-purpose | Phase 4: 敵対的検証（PASS/FAIL/PARTIAL） |
 | opus-code-review | (既存) | レビューループ |
 | codex-code-review | (既存) | 最終ゲート |
-| テストエージェント | general-purpose | Phase 4: テスト |
 | PRエージェント | general-purpose | Phase 5-7: PR・マージ |
 
 ### 並列化の原則
@@ -57,7 +58,6 @@ agent-skills: .claude/skills/iai/skill.md
 各Phase完了時に `.iai-checkpoint.json` を更新し、中断からの復旧を可能にする。
 
 ```bash
-# 書き込み例
 cat > .iai-checkpoint.json << 'EOF'
 {
   "phase": 3,
@@ -78,18 +78,6 @@ EOF
 
 ---
 
-## メモリ統合
-
-ワークフロー完了時に、プロジェクトから学んだ知見をメモリに保存する:
-
-- 頻出するバグパターン（例: 「このプロジェクトではN+1クエリが頻発」）
-- 効果的だった調査手法
-- プロジェクト固有の注意点
-
-ただし、コードパターンやアーキテクチャなど、コードから直接読み取れる情報は保存しない。
-
----
-
 ## 実行モード
 
 ### 通常モード（デフォルト）
@@ -107,9 +95,9 @@ EOF
 | タイミング | 確認内容 | 全自動時 |
 |-----------|---------|---------|
 | Phase 1 完了 | Issue内容・影響ファイル・ブランチ名 | 自動作成 |
-| Phase 2 プラン提示 | 選択肢の選択 or GO/NOGO | ⭐推奨を採用 |
-| Phase 3 実装方針の迷い | 仕様曖昧・複数解釈 | 最シンプルを選択 |
-| Phase 4 テスト範囲 | 最低限 vs 網羅的 | ⭐推奨で実行 |
+| Phase 2 プラン提示 | 選択肢の選択 or GO/NOGO（テスト方針含む） | ⭐推奨を採用 |
+| Phase 3 テスト範囲 | 最低限 vs 網羅的 | ⭐推奨で実行 |
+| Phase 4 実装方針の迷い | 仕様曖昧・複数解釈 | 最シンプルを選択 |
 
 ---
 
@@ -124,10 +112,10 @@ EOF
 ```
 # 並列起動
 Agent(name: "investigator", subagent_type: "general-purpose",
-  prompt: "iai-investigator エージェント定義を読み、{課題タイプ}の調査プロトコルで調査せよ...")
+  prompt: "iai-investigator エージェント定義(.claude/agents/iai-investigator.md)を読み、{課題タイプ}の調査プロトコルで調査せよ...")
 
 Agent(name: "git-archaeologist", subagent_type: "Explore",
-  prompt: "Git考古学: git log/blame/diffで課題との相関を調査...")
+  prompt: "Git履歴調査: git log/blame/diffで課題との相関を調査...")
 ```
 
 ### 1-4. 根本原因の特定（自分で統合）
@@ -185,7 +173,7 @@ git checkout -b {type}/#{issue番号}-{short-description}
 
 ```
 Agent(name: "planner", subagent_type: "general-purpose",
-  prompt: "iai-planner エージェント定義を読み、実装プランを策定...")
+  prompt: "iai-planner エージェント定義(.claude/agents/iai-planner.md)を読み、実装プランを策定せよ。テスト設計も含めること...")
 ```
 
 ### 2-2〜2-3. ユーザー確認（AskUserQuestion）
@@ -230,11 +218,158 @@ Agent(name: "planner", subagent_type: "general-purpose",
 
 ---
 
-## Phase 3: 実装
+## Phase 3: テスト設計・作成（Red）⛔ MANDATORY
 
-### 3-1. コーディング（実装エージェントに委譲）
+> **テスト駆動開発: テストが仕様書であり、AIへの正誤判定である。**
+> テストを先に書くことで、AIに「何が正解か」を明確に伝える。
 
-独立した変更は複数エージェントを並列起動。
+### 3-1. テスト方針の確認（AskUserQuestion）
+
+通常モードでは **必ず AskUserQuestion** でテスト範囲を確認:
+
+```
+プランに基づいてテストを先に作成します。
+
+📝 テスト対象:
+  - Unit: {対象関数/モジュール一覧}
+  - E2E: {対象ユーザーフロー一覧}
+
+🎯 テスト範囲:
+  - 最低限: 変更する関数の正常系・異常系のみ
+  - 推奨: 変更する関数 + 影響を受ける既存機能 ⭐
+
+どちらの範囲で進めますか？
+```
+
+### 3-2. テスト設計・作成（テスト設計エージェントに委譲）
+
+```
+Agent(name: "test-designer", subagent_type: "general-purpose",
+  prompt: "以下のプランに基づいて、テストを先に作成せよ。
+
+  ## 原則
+  - テスト駆動開発: テストが仕様書。実装はこのテストを通すために書かれる。
+  - CLAUDE.md やプロジェクトのテストルールがあれば参照すること
+
+  ## テスト設計の手順
+  1. プランの受け入れ条件をテストケースに変換
+  2. 正常系 + 境界値 + 異常系を網羅
+  3. E2E: ユーザーフローの完走を検証するテスト
+  4. Unit: 純粋関数・ロジックの境界条件テスト
+
+  ## 重要
+  - テストは「まだ存在しない実装」に対して書く
+  - import する関数/コンポーネントのインターフェース（型・引数・戻り値）はプランから推定
+  - テスト実行時に全て Red（失敗）になることが正しい状態
+  ")
+```
+
+### 3-3. テストレビュー ⛔ MANDATORY
+
+テストファイルに対して2段階レビューを実行:
+```
+1. opus-code-review → テストの網羅性・品質をレビュー
+2. P0/P1 なし → 次へ
+```
+
+### 3-4. Red 確認 + Hard Red Gate（⛔ F7 対応）
+
+> **F7 対応**: 過去にPhase 3を飛ばしてPhase 4に直行した失敗事例あり。
+> Phase 3 → Phase 4 の遷移は **Hard Gate** とし、以下の条件を全て満たさない限り Phase 4 を起動できない。
+
+```bash
+# テスト実行
+npm run test 2>&1 | tee /tmp/iai-red-result.txt
+
+# 失敗件数をカウント
+FAIL_COUNT=$(grep -cE "FAIL|failed|×" /tmp/iai-red-result.txt || echo 0)
+TEST_FILES=$(grep -oE "(tests|src)/[^ ]+\.test\.[tj]sx?" /tmp/iai-red-result.txt | sort -u | wc -l)
+
+echo "Failed tests: $FAIL_COUNT / Test files: $TEST_FILES"
+```
+
+**Hard Gate 合格条件（全て必須）**:
+
+| 条件 | 最小値 | 理由 |
+|------|-------|------|
+| failing test 件数 | **≥ 3** | 正常/境界/異常の3ケース最低ライン |
+| test ファイル存在 | **≥ 1** | 物理的にテストが書かれている証拠 |
+| テストファイル作成時刻 | **実装ファイル作成時刻より前** | TDD の前提 |
+
+**Gate判定ロジック**:
+
+```
+if FAIL_COUNT < 3 or TEST_FILES < 1:
+  → VERDICT: ERROR (Red Gate failed)
+  → Phase 4 は起動しない
+  → ユーザーに報告: "テストが不十分です。正常系・境界値・異常系の3ケースを最低限書いてください"
+  → Phase 3 に戻る
+
+if all_tests_passing_without_implementation:
+  → VERDICT: ERROR (Tests too weak)
+  → 「すでに通るテスト」は仕様として不十分
+  → test-designer に差し戻し
+
+else:
+  → VERDICT: PASS
+  → Phase 4 起動可能
+```
+
+**禁止事項**:
+- ❌ "テストは後で書く" でPhase 4に進むこと
+- ❌ Phase 4 で実装完了後にテストを書くこと（それは検証、TDDではない）
+- ❌ Red確認を目視だけで済ませること（Bashで実行して証拠を残す）
+
+**fail-closed原則**: Hard Gate 失敗は ERROR（警告ではなく停止）。ユーザー判断なしで Phase 4 は起動しない。
+
+テストが**意図通りに失敗する**ことを確認。すでに通ってしまうテストは仕様が不十分。
+
+チェックポイント保存: `{"phase": 3, "red_gate": "PASS", "fail_count": N, ...}`
+
+---
+
+## Phase 4: 実装（Green）⛔ MANDATORY
+
+> **目標: Phase 3 で書いたテストを全て通す。テストが正誤判定。**
+> **鉄則: どのファイルも「プラン → レビュー → 実装 → レビュー」を経る。例外なし。**
+
+### 4-1. 実装単位の分割
+
+Phase 2 のプランに基づき、実装を**論理単位（ステップ）**に分割する。
+
+```
+例:
+  ステップ1: DB マイグレーション
+  ステップ2: サーバー関数
+  ステップ3: コンポーネント
+```
+
+### 4-2. ステップごとの実装ループ ⛔ MANDATORY
+
+**各ステップで以下のサイクルを必ず回す。一括実装→一括レビューは禁止。**
+
+```
+【ステップ N の実装サイクル】
+
+① ファイルプラン確認
+   - Phase 2 のプランから該当ステップの変更内容を確認
+   - 変更するファイル、変更の目的、受け入れ条件を明確化
+
+② コーディング（実装エージェントに委譲）
+   - CLAUDE.md や .claude/rules/ のルールに従うこと
+   - Phase 3 のテストを通すことが目標
+
+③ テスト実行（Green 確認）
+   npm run test
+   npm run build  # or equivalent
+
+④ Opus コードレビュー
+   - opus-code-review エージェントを起動
+   - P0/P1 指摘あり → 修正 → テスト再実行 → 再レビュー
+   - P0/P1 なし → ⑤ へ
+
+⑤ 次のステップへ（または最終ゲートへ）
+```
 
 実装中に仕様が曖昧・複数解釈がある場合は **AskUserQuestion** で確認:
 
@@ -250,43 +385,57 @@ B: {アプローチB}
 どちらで進めますか？
 ```
 
-### 3-2. 実装レビュー（2段階ゲート）⛔ MANDATORY
+### 4-3. 独立ステップの並列実行（Worktree 隔離）
 
-Phase 2-4 と同じ2段階ゲート。**diff ベース**（`git diff main...HEAD`）でレビュー。
+依存関係がないステップは並列で実装エージェントを起動してよい。
+ただし**各エージェントが個別に Opus レビューを受けること**。
 
-レビュー観点:
-- 仕様適合性（プラン通りか）
-- ロジックの健全性（条件分岐・データフローの破綻なし）
-- 変更の純度（不要な変更が混ざっていないか）
-- エラーハンドリング・境界条件
-- プロジェクト固有ルール（`.claude/rules/review.md`）
-
-チェックポイント保存: `{"phase": 3, ...}`
-
----
-
-## Phase 4: テスト
-
-### 4-1. 既存テスト実行（テストエージェントに委譲）
-
-### 4-2. テスト結果による分岐
-
-**全テスト PASS → Phase 5 へ**
-
-**テスト不足 → AskUserQuestion でテスト範囲を確認:**
+**並列実行時は `isolation: "worktree"` で隔離し、同一ファイルへの同時書き込みを防止する。**
 
 ```
-テストが不足しています。以下の方針でテストを作成してよいですか？
-
-📝 テスト対象ファイル: {一覧}
-🎯 テスト範囲:
-  - 最低限: 変更した関数の正常系・異常系のみ
-  - 推奨: 変更した関数 + 影響を受ける既存機能 ⭐
-
-どちらの範囲で進めますか？
+# 並列起動の例（ステップ2 と ステップ3 が独立の場合）
+Agent(name: "impl-step2", isolation: "worktree",
+  prompt: "ステップ2 を実装し、Opus レビューを受けよ...")
+Agent(name: "impl-step3", isolation: "worktree",
+  prompt: "ステップ3 を実装し、Opus レビューを受けよ...")
+# → 完了後、各 worktree の変更をメインブランチに統合
 ```
 
-テスト作成サイクル: プラン → 2段階レビュー → 実装 → 2段階レビュー → 実行
+### 4-4. Codex CLI 最終ゲート（全ステップ完了後・1回）⛔ MANDATORY
+
+全ステップの Opus レビューが合格した後、全体の diff に対して Codex 最終レビュー:
+
+```
+1. codex-code-review サブエージェントを起動（git diff main...HEAD）
+2. P0/P1 指摘あり → 該当ステップの修正 → Opus 再レビュー → Codex 再実行
+3. P0/P1 なし → Phase 4-5 へ
+```
+
+テストが通らない場合は実装を修正。テストを修正するのではない。
+（テスト自体にバグがある場合のみテストを修正可。ただしレビューで承認を得ること）
+
+### 4-5. 敵対的検証（Verification）⛔ MANDATORY
+
+> **レビューは「正しそうに見える」を確認する。検証は「実際に壊れない」を証明する。**
+> Codex 合格だけでは不十分。実際にコマンドを実行して壊しにいく。
+
+```
+Agent(name: "verifier", subagent_type: "general-purpose",
+  prompt: "iai-verifier エージェント定義(.claude/agents/iai-verifier.md)を読み、
+  以下の変更を敵対的に検証せよ。
+
+  課題タイプ: {TYPE}
+  変更ファイル: {一覧}
+  変更概要: {何をどう変えたか}
+
+  必ず実際にコマンドを実行し、PASS/FAIL/PARTIAL の VERDICT を出すこと。
+  .claude/rules/review.md の Project-Specific Check Items も必ず検証すること。")
+```
+
+#### VERDICT による分岐
+- **PASS** → Phase 5 へ
+- **PARTIAL** → 未検証項目をユーザーに報告し、続行するか確認
+- **FAIL** → FAIL 項目を修正 → Opus 再レビュー → Codex 再実行 → 再検証
 
 チェックポイント保存: `{"phase": 4, ...}`
 
@@ -297,10 +446,10 @@ Phase 2-4 と同じ2段階ゲート。**diff ベース**（`git diff main...HEAD
 ### 5-1. 最終チェック + PR作成（PRエージェントに委譲）
 
 ```bash
-# 最終チェック
-npx tsc --noEmit
-npm run lint
-npm run test
+# 最終チェック（プロジェクトのビルド・テストコマンドに合わせる）
+npm run build  # or equivalent
+npm run lint   # or equivalent
+npm run test   # or equivalent
 
 # PR作成
 git push -u origin {ブランチ名}
@@ -320,11 +469,12 @@ Closes #{issue番号}
 
 ## テスト
 - [x] 型チェック通過
-- [x] テスト通過
+- [x] テスト通過（TDD: Red → Green 確認済み）
 - [x] Claude Opus レビュー合格
 - [x] Codex CLI レビュー合格
+- [x] 敵対的検証 PASS（iai-verifier）
 
-🤖 Generated with [Claude Code](https://claude.ai/code)
+🤖 Generated with [Claude Code](https://claude.ai/code) + [/iai](https://github.com/yoshi0703/claude-solve-skill)
 EOF
 )"
 ```
@@ -374,9 +524,46 @@ gh pr merge {PR番号} --squash --delete-branch
 
 ---
 
+## メモリ統合（構造化ポストモーテム）
+
+ワークフロー完了時に、以下の型分けでメモリに保存する。コードから直接読み取れる情報は保存しない。
+
+### 保存する型
+
+| 型名 | 保存内容 | 例 |
+|------|---------|-----|
+| `bug_pattern` | 今回のバグの根本原因パターン | 「N+1 クエリで一覧表示が10秒かかっていた」 |
+| `project_landmine` | プロジェクト固有の地雷 | 「soft delete が is_archived フラグ、deleted_at ではない」 |
+| `effective_technique` | 効果的だった調査・実装手法 | 「git blame で直近の変更から原因特定が最速だった」 |
+| `reviewer_preference` | レビューで繰り返し指摘された点 | 「Codex はエラーハンドリングの不足に敏感」 |
+| `test_gap` | テストで見落としがちな領域 | 「認証チェックのテストが不足しがち」 |
+
+### フォーマット
+
+```markdown
+---
+name: {型名}_{簡潔な識別子}
+description: {1行の説明}
+type: project
+---
+
+{事実}
+
+**Why:** {なぜこれが重要か}
+**How to apply:** {次回どう活かすか}
+```
+
+### 保存しないもの
+- コードパターン、ファイルパス（コードから読める）
+- Git 履歴（git log で読める）
+- デバッグの手順（修正がコードに入っている）
+
+---
+
 ## 中断・例外処理
 
 - **ユーザー中断**: 現ステップ完了後停止、チェックポイント保存
 - **Codex 5回不合格**: ユーザーに判断を仰ぐ
 - **テストFAIL解消不能**: 原因分析を報告
 - **ビルドエラー**: 自動修正3回試行、失敗でユーザーに報告
+- **Verification FAIL**: 修正 → 再レビュー → 再検証のループ（最大3回）
